@@ -17,6 +17,25 @@ const MOCK_USER = {
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+// Storage helper that works in all environments
+const storage = {
+  async get<T>(key: string): Promise<T | null> {
+    try {
+      const item = localStorage.getItem(key)
+      return item ? JSON.parse(item) : null
+    } catch {
+      return null
+    }
+  },
+  async set<T>(key: string, value: T): Promise<void> {
+    try {
+      localStorage.setItem(key, JSON.stringify(value))
+    } catch (e) {
+      console.error('Storage error:', e)
+    }
+  },
+}
+
 export const mockApi = {
   auth: {
     login: async (email: string, password: string): Promise<AuthResponse> => {
@@ -41,8 +60,8 @@ export const mockApi = {
       search?: string
     }): Promise<CompaniesResponse> => {
       await delay(300)
-      
-      const companies = await window.spark.kv.get<Company[]>('mock_companies') || []
+
+      const companies = await storage.get<Company[]>('mock_companies') || []
       
       let filtered = companies
       
@@ -69,8 +88,8 @@ export const mockApi = {
 
     get: async (id: string): Promise<Company> => {
       await delay(300)
-      
-      const companies = await window.spark.kv.get<Company[]>('mock_companies') || []
+
+      const companies = await storage.get<Company[]>('mock_companies') || []
       const company = companies.find(c => c.id === id)
       
       if (!company) {
@@ -82,9 +101,9 @@ export const mockApi = {
 
     create: async (data: CreateCompanyRequest): Promise<Company> => {
       await delay(500)
-      
-      const companies = await window.spark.kv.get<Company[]>('mock_companies') || []
-      
+
+      const companies = await storage.get<Company[]>('mock_companies') || []
+
       const newCompany: Company = {
         id: `comp_${Date.now()}`,
         ...data,
@@ -94,13 +113,13 @@ export const mockApi = {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
-      
+
       const updatedCompanies = [...companies, newCompany]
-      await window.spark.kv.set('mock_companies', updatedCompanies)
-      
-      const stats = await window.spark.kv.get<DashboardStats>('mock_stats')
+      await storage.set('mock_companies', updatedCompanies)
+
+      const stats = await storage.get<DashboardStats>('mock_stats')
       if (stats) {
-        await window.spark.kv.set('mock_stats', {
+        await storage.set('mock_stats', {
           ...stats,
           total_clients: stats.total_clients + 1,
         })
@@ -111,41 +130,41 @@ export const mockApi = {
 
     update: async (id: string, data: UpdateCompanyRequest): Promise<Company> => {
       await delay(500)
-      
-      const companies = await window.spark.kv.get<Company[]>('mock_companies') || []
+
+      const companies = await storage.get<Company[]>('mock_companies') || []
       const index = companies.findIndex(c => c.id === id)
-      
+
       if (index === -1) {
         throw new Error('Company not found')
       }
-      
+
       const updatedCompany: Company = {
         ...companies[index],
         ...data,
         updated_at: new Date().toISOString(),
       }
-      
+
       const updatedCompanies = [...companies]
       updatedCompanies[index] = updatedCompany
-      
-      await window.spark.kv.set('mock_companies', updatedCompanies)
+
+      await storage.set('mock_companies', updatedCompanies)
       
       return updatedCompany
     },
 
     delete: async (id: string): Promise<void> => {
       await delay(500)
-      
-      const companies = await window.spark.kv.get<Company[]>('mock_companies') || []
+
+      const companies = await storage.get<Company[]>('mock_companies') || []
       const filtered = companies.filter(c => c.id !== id)
-      
-      await window.spark.kv.set('mock_companies', filtered)
+
+      await storage.set('mock_companies', filtered)
     },
 
     stats: async (): Promise<DashboardStats> => {
       await delay(300)
-      
-      const stats = await window.spark.kv.get<DashboardStats>('mock_stats')
+
+      const stats = await storage.get<DashboardStats>('mock_stats')
       
       if (!stats) {
         return {
