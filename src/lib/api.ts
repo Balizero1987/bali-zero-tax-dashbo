@@ -10,7 +10,7 @@ import { mockApi } from './mockApi'
 
 const USE_MOCK_API = true
 
-const API_BASE = import.meta.env.PROD 
+const API_BASE = import.meta.env.PROD
   ? 'https://nuzantara-backend.fly.dev/api/tax'
   : 'http://localhost:8080/api/tax'
 
