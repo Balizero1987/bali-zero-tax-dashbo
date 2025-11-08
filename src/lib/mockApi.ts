@@ -7,42 +7,27 @@ import type {
   DashboardStats,
 } from './types'
 
+import { taxCalculator } from './taxCalculator'
+
 const MOCK_TOKEN = 'mock_jwt_token_12345'
+
 const MOCK_USER = {
   id: 'user_001',
   email: 'angel@balizero.com',
   name: 'Angel',
-  role: 'consultant',
+  role: 'consultant' as const,
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-// Storage helper that works in all environments
-const storage = {
-  async get<T>(key: string): Promise<T | null> {
-    try {
-      const item = localStorage.getItem(key)
-      return item ? JSON.parse(item) : null
-    } catch {
-      return null
-    }
-  },
-  async set<T>(key: string, value: T): Promise<void> {
-    try {
-      localStorage.setItem(key, JSON.stringify(value))
-    } catch (e) {
-      console.error('Storage error:', e)
-    }
-  },
-}
 
 export const mockApi = {
   auth: {
     login: async (email: string, password: string): Promise<AuthResponse> => {
       await delay(500)
       
-      if (email === 'angel@balizero.com' && password === 'demo123') {
+      if (email === 'angel@balizero.com' && password === 'demo') {
         return {
+          success: true,
           token: MOCK_TOKEN,
           user: MOCK_USER,
         }
@@ -50,46 +35,66 @@ export const mockApi = {
       
       throw new Error('Invalid credentials')
     },
+    
+    logout: async (): Promise<void> => {
+      await delay(300)
+    },
   },
 
   companies: {
-    list: async (params?: {
-      status?: string
-      page?: number
-      limit?: number
-      search?: string
-    }): Promise<CompaniesResponse> => {
-      await delay(300)
-
-      const companies = await storage.get<Company[]>('mock_companies') || []
+    list: async (): Promise<CompaniesResponse> => {
+      await delay(400)
       
-      let filtered = companies
+      const companies = await window.spark.kv.get<Company[]>('mock_companies')
       
-      if (params?.status && params.status !== 'active') {
-        filtered = filtered.filter(c => c.status === params.status)
-      }
-      
-      if (params?.search) {
-        const search = params.search.toLowerCase()
-        filtered = filtered.filter(c =>
-          c.company_name.toLowerCase().includes(search) ||
-          c.email.toLowerCase().includes(search) ||
-          c.npwp?.includes(search)
-        )
+      if (!companies || companies.length === 0) {
+        const initialCompanies: Company[] = [
+          {
+            id: 'comp_001',
+            name: 'PT Bali Digital Solutions',
+            legal_entity_type: 'PT',
+            npwp: '01.234.567.8-901.000',
+            status: 'active',
+            next_payment: new Date(2025, 10, 15).toISOString(),
+            created_at: new Date(2024, 0, 15).toISOString(),
+          },
+          {
+            id: 'comp_002',
+            name: 'CV Nusantara Teknologi',
+            legal_entity_type: 'CV',
+            npwp: '02.345.678.9-012.000',
+            status: 'pending',
+            created_at: new Date(2024, 2, 20).toISOString(),
+          },
+          {
+            id: 'comp_003',
+            name: 'PT Maju Bersama Indonesia',
+            legal_entity_type: 'PT',
+            npwp: '03.456.789.0-123.000',
+            status: 'active',
+            next_payment: new Date(2025, 10, 20).toISOString(),
+            created_at: new Date(2023, 11, 1).toISOString(),
+          },
+        ]
+        
+        await window.spark.kv.set('mock_companies', initialCompanies)
+        
+        return {
+          companies: initialCompanies,
+          total: initialCompanies.length,
+        }
       }
       
       return {
-        companies: filtered,
-        total: filtered.length,
-        page: params?.page || 1,
-        limit: params?.limit || 20,
+        companies,
+        total: companies.length,
       }
     },
 
     get: async (id: string): Promise<Company> => {
       await delay(300)
-
-      const companies = await storage.get<Company[]>('mock_companies') || []
+      
+      const companies = await window.spark.kv.get<Company[]>('mock_companies') || []
       const company = companies.find(c => c.id === id)
       
       if (!company) {
@@ -101,81 +106,72 @@ export const mockApi = {
 
     create: async (data: CreateCompanyRequest): Promise<Company> => {
       await delay(500)
-
-      const companies = await storage.get<Company[]>('mock_companies') || []
-
+      
+      const companies = await window.spark.kv.get<Company[]>('mock_companies') || []
+      
       const newCompany: Company = {
         id: `comp_${Date.now()}`,
         ...data,
-        status: 'pending',
-        assigned_consultant: 'Angel',
-        jurnal_connected: false,
+        status: 'active',
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
       }
-
+      
       const updatedCompanies = [...companies, newCompany]
-      await storage.set('mock_companies', updatedCompanies)
-
-      const stats = await storage.get<DashboardStats>('mock_stats')
-      if (stats) {
-        await storage.set('mock_stats', {
-          ...stats,
-          total_clients: stats.total_clients + 1,
-        })
-      }
+      await window.spark.kv.set('mock_companies', updatedCompanies)
       
       return newCompany
     },
 
     update: async (id: string, data: UpdateCompanyRequest): Promise<Company> => {
-      await delay(500)
-
-      const companies = await storage.get<Company[]>('mock_companies') || []
+      await delay(400)
+      
+      const companies = await window.spark.kv.get<Company[]>('mock_companies') || []
       const index = companies.findIndex(c => c.id === id)
-
+      
       if (index === -1) {
         throw new Error('Company not found')
       }
-
-      const updatedCompany: Company = {
+      
+      const updatedCompany = {
         ...companies[index],
         ...data,
-        updated_at: new Date().toISOString(),
       }
-
-      const updatedCompanies = [...companies]
-      updatedCompanies[index] = updatedCompany
-
-      await storage.set('mock_companies', updatedCompanies)
+      
+      companies[index] = updatedCompany
+      await window.spark.kv.set('mock_companies', companies)
       
       return updatedCompany
     },
 
     delete: async (id: string): Promise<void> => {
-      await delay(500)
-
-      const companies = await storage.get<Company[]>('mock_companies') || []
+      await delay(400)
+      
+      const companies = await window.spark.kv.get<Company[]>('mock_companies') || []
       const filtered = companies.filter(c => c.id !== id)
-
-      await storage.set('mock_companies', filtered)
-    },
-
-    stats: async (): Promise<DashboardStats> => {
-      await delay(300)
-
-      const stats = await storage.get<DashboardStats>('mock_stats')
       
-      if (!stats) {
-        return {
-          total_clients: 0,
-          pending_reports: 0,
-          upcoming_payments: 0,
-          this_month_tax: 0,
-        }
-      }
-      
-      return stats
+      await window.spark.kv.set('mock_companies', filtered)
     },
+  },
+
+  stats: async (): Promise<DashboardStats> => {
+    await delay(300)
+    
+    const companies = await window.spark.kv.get<Company[]>('mock_companies') || []
+    
+    const monthlyTax = companies.reduce((sum, company) => {
+      const estimatedMonthlyRevenue = 50_000_000
+      const taxResult = taxCalculator.calculateCorporateTax(
+        company.legal_entity_type,
+        estimatedMonthlyRevenue * 12
+      )
+      return sum + (taxResult.totalTax / 12)
+    }, 0)
+    
+    return {
+      total_clients: companies.length,
+      pending_reports: companies.filter(c => c.status === 'pending').length,
+      upcoming_payments: companies.filter(c => c.next_payment).length,
+      this_month_tax: Math.round(monthlyTax),
+    }
   },
 }
